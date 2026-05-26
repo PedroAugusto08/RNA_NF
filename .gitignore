@@ -1,0 +1,10 @@
+/results/figures
+
+/results/tables
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
