@@ -18,12 +18,8 @@ Comparar modelos de redes neurais artificiais e modelos fuzzy/neuro-fuzzy usando
 ```text
 RNA_NF/
 ├── data/
-│   ├── raw/
-│   ├── processed/
-│   └── README.md
 ├── results/
 │   ├── figures/
-│   ├── logs/
 │   └── tables/
 ├── src/
 │   ├── __init__.py

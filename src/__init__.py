@@ -1,1 +1,1 @@
-"""Pacote principal do projeto de Inteligencia Computacional."""
+# Pacote principal do projeto de Inteligencia Computacional.
