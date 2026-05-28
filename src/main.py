@@ -5,6 +5,12 @@ import argparse
 from src.config import DATASET_CONFIGS
 from src.data_loader import format_dataset_report
 from src.eda import format_eda_report, run_eda
+from src.preprocessing import (
+    build_preprocessing_overview,
+    format_preprocessing_report,
+    prepare_all_datasets,
+    prepare_dataset_splits,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,6 +40,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Executa a analise exploratoria basica e salva tabelas e figuras.",
     )
+    parser.add_argument(
+        "--run-preprocessing",
+        action="store_true",
+        help="Executa divisao estratificada e preprocessamento reprodutivel.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Seed usada na divisao treino/validacao/teste.",
+    )
     return parser
 
 
@@ -54,6 +71,19 @@ def main() -> None:
         dataset_names = [args.dataset] if args.dataset else list(DATASET_CONFIGS)
         summary_df = run_eda(dataset_names=dataset_names)
         print(format_eda_report(summary_df))
+        return
+
+    if args.run_preprocessing:
+        if args.dataset:
+            prepared = prepare_dataset_splits(dataset_name=args.dataset, seed=args.seed)
+            summary_df = build_preprocessing_overview(
+                {prepared["dataset_name"]: prepared}
+            )
+        else:
+            prepared_all = prepare_all_datasets(seed=args.seed)
+            summary_df = build_preprocessing_overview(prepared_all)
+
+        print(format_preprocessing_report(summary_df))
         return
 
     parser.print_help()
