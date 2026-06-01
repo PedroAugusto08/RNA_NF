@@ -7,10 +7,12 @@ from src.data_loader import format_dataset_report
 from src.eda import format_eda_report, run_eda
 from src.models import (
     format_fuzzy_cmeans_smoke_test_report,
+    format_fuzzy_knn_smoke_test_report,
     evaluate_mlp_classifier,
     evaluate_rbf_network_classifier,
     format_mlp_smoke_test_report,
     run_fuzzy_cmeans_smoke_test,
+    run_fuzzy_knn_smoke_test,
     run_mlp_smoke_test,
     train_mlp_classifier,
     train_rbf_network_classifier,
@@ -75,6 +77,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--test-fuzzy-cmeans",
         action="store_true",
         help="Executa um teste rapido do Fuzzy C-Means usando treino e validacao.",
+    )
+    parser.add_argument(
+        "--test-fuzzy-knn",
+        action="store_true",
+        help="Executa um teste rapido do Fuzzy KNN usando treino e validacao.",
     )
     return parser
 
@@ -225,6 +232,17 @@ def main() -> None:
             seed=args.seed,
         )
         print(format_fuzzy_cmeans_smoke_test_report(result))
+        return
+
+    if args.test_fuzzy_knn:
+        if not args.dataset:
+            parser.error("Use --dataset ao executar --test-fuzzy-knn.")
+
+        result = run_fuzzy_knn_smoke_test(
+            dataset_name=args.dataset,
+            seed=args.seed,
+        )
+        print(format_fuzzy_knn_smoke_test_report(result))
         return
 
     parser.print_help()
