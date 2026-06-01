@@ -52,32 +52,55 @@ def detect_feature_groups(X: pd.DataFrame) -> dict[str, list[str]]:
     }
 
 
-def build_preprocessor(X_train: pd.DataFrame) -> tuple[ColumnTransformer, dict[str, list[str]]]:
+def group_has_missing_values(X: pd.DataFrame, columns: list[str]) -> bool:
+    # Indica se um grupo de colunas possui ao menos um valor ausente.
+    if not columns:
+        return False
+    return bool(X[columns].isna().any().any())
+
+
+def build_preprocessor(
+    X_train: pd.DataFrame,
+) -> tuple[ColumnTransformer, dict[str, Any]]:
     # Monta o preprocessador usando apenas as colunas observadas no treino.
     feature_groups = detect_feature_groups(X_train)
+    preprocessing_plan = {
+        "numeric_columns": feature_groups["numeric_columns"],
+        "categorical_columns": feature_groups["categorical_columns"],
+        "numeric_has_missing": group_has_missing_values(
+            X_train,
+            feature_groups["numeric_columns"],
+        ),
+        "categorical_has_missing": group_has_missing_values(
+            X_train,
+            feature_groups["categorical_columns"],
+        ),
+    }
     transformers = []
 
     if feature_groups["numeric_columns"]:
-        numeric_pipeline = Pipeline(
-            steps=[
-                ("imputer", SimpleImputer(strategy="median")),
-                ("scaler", StandardScaler()),
-            ]
-        )
+        numeric_steps = []
+        if preprocessing_plan["numeric_has_missing"]:
+            numeric_steps.append(("imputer", SimpleImputer(strategy="median")))
+        numeric_steps.append(("scaler", StandardScaler()))
+        numeric_pipeline = Pipeline(steps=numeric_steps)
         transformers.append(
             ("numeric", numeric_pipeline, feature_groups["numeric_columns"])
         )
 
     if feature_groups["categorical_columns"]:
-        categorical_pipeline = Pipeline(
-            steps=[
-                ("imputer", SimpleImputer(strategy="most_frequent")),
-                (
-                    "encoder",
-                    OneHotEncoder(handle_unknown="ignore", sparse_output=False),
-                ),
-            ]
+        categorical_steps = []
+        if preprocessing_plan["categorical_has_missing"]:
+            categorical_steps.append(
+                ("imputer", SimpleImputer(strategy="most_frequent"))
+            )
+        categorical_steps.append(
+            (
+                "encoder",
+                OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+            )
         )
+        categorical_pipeline = Pipeline(steps=categorical_steps)
         transformers.append(
             (
                 "categorical",
@@ -91,7 +114,13 @@ def build_preprocessor(X_train: pd.DataFrame) -> tuple[ColumnTransformer, dict[s
         remainder="drop",
         verbose_feature_names_out=False,
     )
-    return preprocessor, feature_groups
+    preprocessing_plan["numeric_imputer_applied"] = preprocessing_plan[
+        "numeric_has_missing"
+    ]
+    preprocessing_plan["categorical_imputer_applied"] = preprocessing_plan[
+        "categorical_has_missing"
+    ]
+    return preprocessor, preprocessing_plan
 
 
 def create_split_indices(
@@ -200,7 +229,7 @@ def save_split_summary(
     seed: int,
     raw_splits: dict[str, Any],
     processed_splits: dict[str, pd.DataFrame],
-    feature_groups: dict[str, list[str]],
+    preprocessing_plan: dict[str, Any],
     feature_names: list[str],
 ) -> str:
     # Salva um resumo tabular com tamanhos, distribuicoes e dimensoes apos preprocessamento.
@@ -217,8 +246,16 @@ def save_split_summary(
                 "n_raw_features": int(raw_splits[X_key].shape[1]),
                 "n_processed_features": int(processed_splits[X_key].shape[1]),
                 "class_distribution": format_class_distribution(raw_splits[y_key]),
-                "numeric_columns_count": len(feature_groups["numeric_columns"]),
-                "categorical_columns_count": len(feature_groups["categorical_columns"]),
+                "numeric_columns_count": len(preprocessing_plan["numeric_columns"]),
+                "categorical_columns_count": len(
+                    preprocessing_plan["categorical_columns"]
+                ),
+                "numeric_imputer_applied": preprocessing_plan[
+                    "numeric_imputer_applied"
+                ],
+                "categorical_imputer_applied": preprocessing_plan[
+                    "categorical_imputer_applied"
+                ],
                 "processed_feature_names_count": len(feature_names),
             }
         )
@@ -257,7 +294,7 @@ def prepare_dataset_splits(
         test_size=test_size,
     )
     raw_splits = split_dataset_by_indices(X=X, y=y, split_indices=split_indices)
-    preprocessor, feature_groups = build_preprocessor(raw_splits["X_train"])
+    preprocessor, preprocessing_plan = build_preprocessor(raw_splits["X_train"])
     processed_splits, feature_names = transform_feature_splits(
         preprocessor=preprocessor,
         raw_splits=raw_splits,
@@ -276,7 +313,7 @@ def prepare_dataset_splits(
             seed=seed,
             raw_splits=raw_splits,
             processed_splits=processed_splits,
-            feature_groups=feature_groups,
+            preprocessing_plan=preprocessing_plan,
             feature_names=feature_names,
         )
         artifact_paths["feature_names"] = save_feature_names(
@@ -294,7 +331,11 @@ def prepare_dataset_splits(
             "validation_size": validation_size,
             "test_size": test_size,
         },
-        "feature_groups": feature_groups,
+        "feature_groups": {
+            "numeric_columns": preprocessing_plan["numeric_columns"],
+            "categorical_columns": preprocessing_plan["categorical_columns"],
+        },
+        "preprocessing_plan": preprocessing_plan,
         "feature_names": feature_names,
         "preprocessor": preprocessor,
         "metadata": metadata,
@@ -342,6 +383,12 @@ def build_preprocessing_overview(
                 "categorical_columns": len(
                     prepared["feature_groups"]["categorical_columns"]
                 ),
+                "numeric_imputer_applied": prepared["preprocessing_plan"][
+                    "numeric_imputer_applied"
+                ],
+                "categorical_imputer_applied": prepared["preprocessing_plan"][
+                    "categorical_imputer_applied"
+                ],
             }
         )
 
@@ -362,7 +409,9 @@ def format_preprocessing_report(summary_df: pd.DataFrame) -> str:
             f"- {row.display_name}: treino={row.train_samples}, "
             f"validacao={row.validation_samples}, teste={row.test_samples}, "
             f"features brutas={row.raw_features}, "
-            f"features processadas={row.processed_features}"
+            f"features processadas={row.processed_features}, "
+            f"imputacao numerica={row.numeric_imputer_applied}, "
+            f"imputacao categorica={row.categorical_imputer_applied}"
         )
 
     return "\n".join(lines)
