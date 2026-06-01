@@ -5,6 +5,7 @@ import argparse
 from src.config import DATASET_CONFIGS
 from src.data_loader import format_dataset_report
 from src.eda import format_eda_report, run_eda
+from src.models import format_mlp_smoke_test_report, run_mlp_smoke_test
 from src.preprocessing import (
     build_preprocessing_overview,
     format_preprocessing_report,
@@ -51,6 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=42,
         help="Seed usada na divisao treino/validacao/teste.",
     )
+    parser.add_argument(
+        "--test-mlp-classifier",
+        action="store_true",
+        help="Executa um teste rapido do MLP usando apenas treino e validacao.",
+    )
     return parser
 
 
@@ -84,6 +90,14 @@ def main() -> None:
             summary_df = build_preprocessing_overview(prepared_all)
 
         print(format_preprocessing_report(summary_df))
+        return
+
+    if args.test_mlp_classifier:
+        if not args.dataset:
+            parser.error("Use --dataset ao executar --test-mlp-classifier.")
+
+        result = run_mlp_smoke_test(dataset_name=args.dataset, seed=args.seed)
+        print(format_mlp_smoke_test_report(result))
         return
 
     parser.print_help()
