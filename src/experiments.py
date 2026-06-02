@@ -111,6 +111,88 @@ def get_default_algorithm_params(
     raise ValueError(f"Algoritmo desconhecido: {algorithm_name}")
 
 
+def fit_algorithm_model(
+    algorithm_name: str,
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    model_params: dict[str, Any],
+) -> tuple[Any, float, list[str]]:
+    # Treina um algoritmo e retorna o modelo ajustado, tempo e avisos.
+    warnings_list: list[str] = []
+
+    if algorithm_name == "mlp_classifier":
+        model, training_time_seconds, warnings_list = train_mlp_classifier(
+            X_train=X_train,
+            y_train=y_train,
+            **model_params,
+        )
+        return model, training_time_seconds, warnings_list
+
+    if algorithm_name == "rbf_network":
+        model, training_time_seconds, warnings_list = train_rbf_network_classifier(
+            X_train=X_train,
+            y_train=y_train,
+            **model_params,
+        )
+        return model, training_time_seconds, warnings_list
+
+    if algorithm_name == "fuzzy_cmeans":
+        model, training_time_seconds = train_fuzzy_cmeans_classifier(
+            X_train=X_train,
+            y_train=y_train,
+            **model_params,
+        )
+        return model, training_time_seconds, warnings_list
+
+    if algorithm_name == "fuzzy_knn":
+        model, training_time_seconds = train_fuzzy_knn_classifier(
+            X_train=X_train,
+            y_train=y_train,
+            **model_params,
+        )
+        return model, training_time_seconds, warnings_list
+
+    raise ValueError(f"Algoritmo desconhecido: {algorithm_name}")
+
+
+def evaluate_algorithm_on_validation(
+    algorithm_name: str,
+    model: Any,
+    X_validation: pd.DataFrame,
+    y_validation: pd.Series,
+) -> dict[str, Any]:
+    # Avalia um algoritmo no conjunto de validacao.
+    if algorithm_name == "mlp_classifier":
+        return evaluate_mlp_classifier(
+            model=model,
+            X_validation=X_validation,
+            y_validation=y_validation,
+        )
+
+    if algorithm_name == "rbf_network":
+        return evaluate_rbf_network_classifier(
+            model=model,
+            X_validation=X_validation,
+            y_validation=y_validation,
+        )
+
+    if algorithm_name == "fuzzy_cmeans":
+        return evaluate_fuzzy_cmeans_classifier(
+            model=model,
+            X_validation=X_validation,
+            y_validation=y_validation,
+        )
+
+    if algorithm_name == "fuzzy_knn":
+        return evaluate_fuzzy_knn_classifier(
+            model=model,
+            X_validation=X_validation,
+            y_validation=y_validation,
+        )
+
+    raise ValueError(f"Algoritmo desconhecido: {algorithm_name}")
+
+
 def run_single_algorithm(
     algorithm_name: str,
     prepared: dict[str, Any],
@@ -127,55 +209,18 @@ def run_single_algorithm(
         n_classes=n_classes,
         seed=seed,
     )
-
-    warnings_list: list[str] = []
-
-    if algorithm_name == "mlp_classifier":
-        model, training_time_seconds, warnings_list = train_mlp_classifier(
-            X_train=X_train,
-            y_train=y_train,
-            **model_params,
-        )
-        evaluation = evaluate_mlp_classifier(
-            model=model,
-            X_validation=X_validation,
-            y_validation=y_validation,
-        )
-    elif algorithm_name == "rbf_network":
-        model, training_time_seconds, warnings_list = train_rbf_network_classifier(
-            X_train=X_train,
-            y_train=y_train,
-            **model_params,
-        )
-        evaluation = evaluate_rbf_network_classifier(
-            model=model,
-            X_validation=X_validation,
-            y_validation=y_validation,
-        )
-    elif algorithm_name == "fuzzy_cmeans":
-        model, training_time_seconds = train_fuzzy_cmeans_classifier(
-            X_train=X_train,
-            y_train=y_train,
-            **model_params,
-        )
-        evaluation = evaluate_fuzzy_cmeans_classifier(
-            model=model,
-            X_validation=X_validation,
-            y_validation=y_validation,
-        )
-    elif algorithm_name == "fuzzy_knn":
-        model, training_time_seconds = train_fuzzy_knn_classifier(
-            X_train=X_train,
-            y_train=y_train,
-            **model_params,
-        )
-        evaluation = evaluate_fuzzy_knn_classifier(
-            model=model,
-            X_validation=X_validation,
-            y_validation=y_validation,
-        )
-    else:
-        raise ValueError(f"Algoritmo desconhecido: {algorithm_name}")
+    model, training_time_seconds, warnings_list = fit_algorithm_model(
+        algorithm_name=algorithm_name,
+        X_train=X_train,
+        y_train=y_train,
+        model_params=model_params,
+    )
+    evaluation = evaluate_algorithm_on_validation(
+        algorithm_name=algorithm_name,
+        model=model,
+        X_validation=X_validation,
+        y_validation=y_validation,
+    )
 
     split_signature = build_split_signature(prepared["split_indices"])
     return {

@@ -5,6 +5,7 @@ import argparse
 from src.config import DATASET_CONFIGS
 from src.data_loader import format_dataset_report
 from src.eda import format_eda_report, run_eda
+from src.evaluation import format_evaluation_report, run_evaluation
 from src.experiments import format_experiments_report, run_experiments
 from src.models import (
     format_fuzzy_cmeans_smoke_test_report,
@@ -94,6 +95,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--run-experiments",
         action="store_true",
         help="Executa multiplas seeds para os quatro algoritmos e salva os resultados.",
+    )
+    parser.add_argument(
+        "--run-evaluation",
+        action="store_true",
+        help="Calcula metricas completas no conjunto de teste e salva matrizes de confusao.",
     )
     return parser
 
@@ -266,6 +272,17 @@ def main() -> None:
             save_results=True,
         )
         print(format_experiments_report(experiment_result))
+        return
+
+    if args.run_evaluation:
+        dataset_names = [args.dataset] if args.dataset else list(DATASET_CONFIGS)
+        evaluation_result = run_evaluation(
+            dataset_names=dataset_names,
+            n_runs=args.n_runs,
+            start_seed=args.seed,
+            save_results=True,
+        )
+        print(format_evaluation_report(evaluation_result))
         return
 
     parser.print_help()
