@@ -5,6 +5,7 @@ import argparse
 from src.config import DATASET_CONFIGS
 from src.data_loader import format_dataset_report
 from src.eda import format_eda_report, run_eda
+from src.experiments import format_experiments_report, run_experiments
 from src.models import (
     format_fuzzy_cmeans_smoke_test_report,
     format_fuzzy_knn_smoke_test_report,
@@ -64,6 +65,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Seed usada na divisao treino/validacao/teste.",
     )
     parser.add_argument(
+        "--n-runs",
+        type=int,
+        default=3,
+        help="Numero de execucoes independentes para a etapa experimental.",
+    )
+    parser.add_argument(
         "--test-mlp-classifier",
         action="store_true",
         help="Executa um teste rapido do MLP usando apenas treino e validacao.",
@@ -82,6 +89,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--test-fuzzy-knn",
         action="store_true",
         help="Executa um teste rapido do Fuzzy KNN usando treino e validacao.",
+    )
+    parser.add_argument(
+        "--run-experiments",
+        action="store_true",
+        help="Executa multiplas seeds para os quatro algoritmos e salva os resultados.",
     )
     return parser
 
@@ -243,6 +255,17 @@ def main() -> None:
             seed=args.seed,
         )
         print(format_fuzzy_knn_smoke_test_report(result))
+        return
+
+    if args.run_experiments:
+        dataset_names = [args.dataset] if args.dataset else list(DATASET_CONFIGS)
+        experiment_result = run_experiments(
+            dataset_names=dataset_names,
+            n_runs=args.n_runs,
+            start_seed=args.seed,
+            save_results=True,
+        )
+        print(format_experiments_report(experiment_result))
         return
 
     parser.print_help()
