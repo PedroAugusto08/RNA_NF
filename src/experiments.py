@@ -18,6 +18,10 @@ from src.models import (
     evaluate_fuzzy_knn_classifier,
     evaluate_mlp_classifier,
     evaluate_rbf_network_classifier,
+    get_fuzzy_cmeans_param_grid,
+    get_fuzzy_knn_param_grid,
+    get_mlp_param_grid,
+    get_rbf_param_grid,
     train_fuzzy_cmeans_classifier,
     train_fuzzy_knn_classifier,
     train_mlp_classifier,
@@ -52,6 +56,11 @@ def generate_seeds(
 def serialize_model_params(model_params: dict[str, Any]) -> str:
     # Serializa hiperparametros para salvar em tabela CSV.
     return json.dumps(model_params, sort_keys=True, default=str)
+
+
+def deserialize_model_params(serialized_model_params: str) -> dict[str, Any]:
+    # Desserializa hiperparametros salvos em formato JSON.
+    return json.loads(serialized_model_params)
 
 
 def build_split_signature(split_indices: dict[str, pd.Index]) -> str:
@@ -109,6 +118,32 @@ def get_default_algorithm_params(
         }
 
     raise ValueError(f"Algoritmo desconhecido: {algorithm_name}")
+
+
+def get_algorithm_param_grid(
+    algorithm_name: str,
+    n_classes: int,
+    seed: int,
+) -> list[dict[str, Any]]:
+    # Retorna a grade de hiperparametros com seeds acopladas quando necessario.
+    if algorithm_name == "mlp_classifier":
+        base_grid = get_mlp_param_grid()
+    elif algorithm_name == "rbf_network":
+        base_grid = get_rbf_param_grid(n_classes)
+    elif algorithm_name == "fuzzy_cmeans":
+        base_grid = get_fuzzy_cmeans_param_grid(n_classes)
+    elif algorithm_name == "fuzzy_knn":
+        base_grid = get_fuzzy_knn_param_grid()
+    else:
+        raise ValueError(f"Algoritmo desconhecido: {algorithm_name}")
+
+    resolved_grid = []
+    for params in base_grid:
+        resolved_params = dict(params)
+        if algorithm_name in {"mlp_classifier", "rbf_network", "fuzzy_cmeans"}:
+            resolved_params.setdefault("random_state", seed)
+        resolved_grid.append(resolved_params)
+    return resolved_grid
 
 
 def fit_algorithm_model(
@@ -197,6 +232,8 @@ def run_single_algorithm(
     algorithm_name: str,
     prepared: dict[str, Any],
     seed: int,
+    model_params: dict[str, Any] | None = None,
+    search_iteration: int | None = None,
 ) -> dict[str, Any]:
     # Treina e avalia um algoritmo em um split ja preparado.
     X_train = prepared["processed_splits"]["X_train"]
@@ -204,7 +241,7 @@ def run_single_algorithm(
     X_validation = prepared["processed_splits"]["X_validation"]
     y_validation = prepared["raw_splits"]["y_validation"]
     n_classes = int(y_train.nunique())
-    model_params = get_default_algorithm_params(
+    resolved_model_params = model_params or get_default_algorithm_params(
         algorithm_name=algorithm_name,
         n_classes=n_classes,
         seed=seed,
@@ -213,7 +250,7 @@ def run_single_algorithm(
         algorithm_name=algorithm_name,
         X_train=X_train,
         y_train=y_train,
-        model_params=model_params,
+        model_params=resolved_model_params,
     )
     evaluation = evaluate_algorithm_on_validation(
         algorithm_name=algorithm_name,
@@ -228,6 +265,7 @@ def run_single_algorithm(
         "display_name": prepared["display_name"],
         "algorithm_name": algorithm_name,
         "seed": seed,
+        "search_iteration": search_iteration,
         "split_signature": split_signature,
         "n_classes": n_classes,
         "train_samples": int(X_train.shape[0]),
@@ -238,30 +276,86 @@ def run_single_algorithm(
         "training_time_seconds": float(training_time_seconds),
         "warning_count": len(warnings_list),
         "warnings": " | ".join(warnings_list),
-        "model_params": serialize_model_params(model_params),
+        "model_params": serialize_model_params(resolved_model_params),
     }
+
+
+def choose_best_record(candidate_records: list[dict[str, Any]]) -> dict[str, Any]:
+    # Seleciona a melhor configuracao pela acuracia de validacao com desempate deterministico.
+    if not candidate_records:
+        raise ValueError("Nao ha candidatos para selecionar a melhor configuracao.")
+
+    sorted_records = sorted(
+        candidate_records,
+        key=lambda record: (
+            -record["validation_accuracy"],
+            record["training_time_seconds"],
+            record["model_params"],
+        ),
+    )
+    return dict(sorted_records[0])
+
+
+def search_best_model_params_for_seed(
+    prepared: dict[str, Any],
+    seed: int,
+    algorithm_names: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    # Executa busca em grade no conjunto de validacao e retorna os melhores parametros.
+    y_train = prepared["raw_splits"]["y_train"]
+    n_classes = int(y_train.nunique())
+    selected_algorithms = algorithm_names or list(ALGORITHM_NAMES)
+
+    all_candidate_records: list[dict[str, Any]] = []
+    best_records: list[dict[str, Any]] = []
+    best_params_by_algorithm: dict[str, dict[str, Any]] = {}
+
+    for algorithm_name in selected_algorithms:
+        param_grid = get_algorithm_param_grid(
+            algorithm_name=algorithm_name,
+            n_classes=n_classes,
+            seed=seed,
+        )
+        candidate_records = []
+        for search_iteration, model_params in enumerate(param_grid, start=1):
+            candidate_record = run_single_algorithm(
+                algorithm_name=algorithm_name,
+                prepared=prepared,
+                seed=seed,
+                model_params=model_params,
+                search_iteration=search_iteration,
+            )
+            candidate_records.append(candidate_record)
+            all_candidate_records.append(candidate_record)
+
+        best_record = choose_best_record(candidate_records)
+        best_record["selection_metric"] = "validation_accuracy"
+        best_record["grid_size"] = len(param_grid)
+        best_records.append(best_record)
+        best_params_by_algorithm[algorithm_name] = deserialize_model_params(
+            best_record["model_params"]
+        )
+
+    return all_candidate_records, best_records, best_params_by_algorithm
 
 
 def run_dataset_experiments_for_seed(
     dataset_name: str,
     seed: int,
     algorithm_names: list[str] | None = None,
-) -> list[dict[str, Any]]:
-    # Executa todos os algoritmos sobre o mesmo split de uma seed.
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    # Executa a busca em grade e retorna candidatos e melhores configuracoes de uma seed.
     prepared = prepare_dataset_splits(
         dataset_name=dataset_name,
         seed=seed,
         save_artifacts=False,
     )
-    selected_algorithms = algorithm_names or list(ALGORITHM_NAMES)
-    return [
-        run_single_algorithm(
-            algorithm_name=algorithm_name,
-            prepared=prepared,
-            seed=seed,
-        )
-        for algorithm_name in selected_algorithms
-    ]
+    search_records, best_records, _ = search_best_model_params_for_seed(
+        prepared=prepared,
+        seed=seed,
+        algorithm_names=algorithm_names,
+    )
+    return search_records, best_records
 
 
 def build_runs_dataframe(run_records: list[dict[str, Any]]) -> pd.DataFrame:
@@ -298,16 +392,20 @@ def build_summary_dataframe(runs_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def save_experiment_results(
+    search_df: pd.DataFrame,
     runs_df: pd.DataFrame,
     summary_df: pd.DataFrame,
 ) -> dict[str, str]:
     # Salva as tabelas principais da ETAPA 8.
     ensure_experiments_directory()
+    search_path = EXPERIMENTS_DIR / "validation_search_runs.csv"
     runs_path = EXPERIMENTS_DIR / "validation_runs.csv"
     summary_path = EXPERIMENTS_DIR / "validation_summary.csv"
+    search_df.to_csv(search_path, index=False)
     runs_df.to_csv(runs_path, index=False)
     summary_df.to_csv(summary_path, index=False)
     return {
+        "search_path": str(search_path),
         "runs_path": str(runs_path),
         "summary_path": str(summary_path),
     }
@@ -324,28 +422,35 @@ def run_experiments(
     selected_datasets = dataset_names or list(DATASET_CONFIGS)
     seeds = generate_seeds(n_runs=n_runs, start_seed=start_seed)
 
-    run_records: list[dict[str, Any]] = []
+    search_records: list[dict[str, Any]] = []
+    best_run_records: list[dict[str, Any]] = []
     for dataset_name in selected_datasets:
         for seed in seeds:
-            run_records.extend(
-                run_dataset_experiments_for_seed(
-                    dataset_name=dataset_name,
-                    seed=seed,
-                    algorithm_names=algorithm_names,
-                )
+            dataset_search_records, dataset_best_records = run_dataset_experiments_for_seed(
+                dataset_name=dataset_name,
+                seed=seed,
+                algorithm_names=algorithm_names,
             )
+            search_records.extend(dataset_search_records)
+            best_run_records.extend(dataset_best_records)
 
-    runs_df = build_runs_dataframe(run_records)
+    search_df = build_runs_dataframe(search_records)
+    runs_df = build_runs_dataframe(best_run_records)
     summary_df = build_summary_dataframe(runs_df)
 
     artifact_paths = {}
     if save_results:
-        artifact_paths = save_experiment_results(runs_df=runs_df, summary_df=summary_df)
+        artifact_paths = save_experiment_results(
+            search_df=search_df,
+            runs_df=runs_df,
+            summary_df=summary_df,
+        )
 
     return {
         "dataset_names": selected_datasets,
         "seeds": seeds,
         "algorithm_names": algorithm_names or list(ALGORITHM_NAMES),
+        "search_df": search_df,
         "runs_df": runs_df,
         "summary_df": summary_df,
         "artifact_paths": artifact_paths,
@@ -363,6 +468,10 @@ def format_experiments_report(experiment_result: dict[str, Any]) -> str:
     ]
 
     if experiment_result["artifact_paths"]:
+        lines.append(
+            "Busca em grade salva em: "
+            f"{experiment_result['artifact_paths']['search_path']}"
+        )
         lines.append(
             f"Execucoes salvas em: {experiment_result['artifact_paths']['runs_path']}"
         )

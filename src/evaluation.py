@@ -28,7 +28,7 @@ from src.experiments import (
     ALGORITHM_NAMES,
     fit_algorithm_model,
     generate_seeds,
-    get_default_algorithm_params,
+    search_best_model_params_for_seed,
     serialize_model_params,
 )
 from src.preprocessing import prepare_dataset_splits
@@ -189,6 +189,8 @@ def evaluate_single_algorithm_on_test(
     algorithm_name: str,
     prepared: dict[str, Any],
     seed: int,
+    model_params: dict[str, Any],
+    selected_validation_record: dict[str, Any],
 ) -> dict[str, Any]:
     # Treina um algoritmo no treino e avalia no conjunto de teste.
     X_train = prepared["processed_splits"]["X_train"]
@@ -196,11 +198,6 @@ def evaluate_single_algorithm_on_test(
     X_test = prepared["processed_splits"]["X_test"]
     y_test = prepared["raw_splits"]["y_test"]
     class_labels = list(np.unique(y_train))
-    model_params = get_default_algorithm_params(
-        algorithm_name=algorithm_name,
-        n_classes=int(y_train.nunique()),
-        seed=seed,
-    )
 
     model, training_time_seconds, warnings_list = fit_algorithm_model(
         algorithm_name=algorithm_name,
@@ -233,6 +230,12 @@ def evaluate_single_algorithm_on_test(
         "test_samples": int(X_test.shape[0]),
         "test_features": int(X_test.shape[1]),
         "training_time_seconds": float(training_time_seconds),
+        "selected_validation_accuracy": float(
+            selected_validation_record["validation_accuracy"]
+        ),
+        "selection_metric": selected_validation_record["selection_metric"],
+        "grid_size": int(selected_validation_record["grid_size"]),
+        "selected_search_iteration": int(selected_validation_record["search_iteration"]),
         "warning_count": len(warnings_list),
         "warnings": " | ".join(warnings_list),
         "model_params": serialize_model_params(model_params),
@@ -253,11 +256,21 @@ def run_evaluation_for_seed(
         save_artifacts=False,
     )
     selected_algorithms = algorithm_names or list(ALGORITHM_NAMES)
+    _, best_records, best_params_by_algorithm = search_best_model_params_for_seed(
+        prepared=prepared,
+        seed=seed,
+        algorithm_names=selected_algorithms,
+    )
+    best_records_by_algorithm = {
+        record["algorithm_name"]: record for record in best_records
+    }
     return [
         evaluate_single_algorithm_on_test(
             algorithm_name=algorithm_name,
             prepared=prepared,
             seed=seed,
+            model_params=best_params_by_algorithm[algorithm_name],
+            selected_validation_record=best_records_by_algorithm[algorithm_name],
         )
         for algorithm_name in selected_algorithms
     ]
@@ -279,6 +292,8 @@ def build_metrics_summary_dataframe(metrics_by_run_df: pd.DataFrame) -> pd.DataF
             n_runs=("seed", "count"),
             accuracy_mean=("accuracy", "mean"),
             accuracy_std=("accuracy", "std"),
+            selected_validation_accuracy_mean=("selected_validation_accuracy", "mean"),
+            selected_validation_accuracy_std=("selected_validation_accuracy", "std"),
             precision_binary_mean=("precision_binary", "mean"),
             precision_binary_std=("precision_binary", "std"),
             recall_binary_mean=("recall_binary", "mean"),
@@ -306,6 +321,7 @@ def build_metrics_summary_dataframe(metrics_by_run_df: pd.DataFrame) -> pd.DataF
     )
     std_columns = [
         "accuracy_std",
+        "selected_validation_accuracy_std",
         "precision_binary_std",
         "recall_binary_std",
         "f1_binary_std",
@@ -410,6 +426,8 @@ def format_evaluation_report(evaluation_result: dict[str, Any]) -> str:
     for row in summary_df.itertuples(index=False):
         lines.append(
             f"- {row.display_name} | {row.algorithm_name}: "
+            f"acc_val_sel = {row.selected_validation_accuracy_mean:.4f} +- "
+            f"{row.selected_validation_accuracy_std:.4f}, "
             f"acc_teste = {row.accuracy_mean:.4f} +- {row.accuracy_std:.4f}, "
             f"f1_macro = {row.f1_macro_mean:.4f} +- {row.f1_macro_std:.4f}, "
             f"f1_weighted = {row.f1_weighted_mean:.4f} +- "
