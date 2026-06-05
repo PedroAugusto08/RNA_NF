@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from src.config import DATASET_CONFIGS
+from src.config import DATASET_CONFIGS, DEFAULT_EXPERIMENT_RUNS
 from src.data_loader import format_dataset_report
 from src.eda import format_eda_report, run_eda
 from src.evaluation import format_evaluation_report, run_evaluation
@@ -35,6 +35,11 @@ def build_parser() -> argparse.ArgumentParser:
     # Cria o parser de argumentos de linha de comando.
     parser = argparse.ArgumentParser(
         description="Ferramentas do projeto de Inteligencia Computacional."
+    )
+    parser.add_argument(
+        "--run",
+        action="store_true",
+        help="Executa o pipeline experimental principal: avaliacao completa seguida de analise estatistica.",
     )
     parser.add_argument(
         "--inspect-datasets",
@@ -72,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--n-runs",
         type=int,
-        default=3,
+        default=DEFAULT_EXPERIMENT_RUNS,
         help="Numero de execucoes independentes para a etapa experimental.",
     )
     parser.add_argument(
@@ -203,6 +208,20 @@ def main() -> None:
     # Executa a acao solicitada na linha de comando.
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.run:
+        dataset_names = [args.dataset] if args.dataset else list(DATASET_CONFIGS)
+        evaluation_result = run_evaluation(
+            dataset_names=dataset_names,
+            n_runs=args.n_runs,
+            start_seed=args.seed,
+            save_results=True,
+        )
+        statistical_result = run_statistical_analysis(save_results=True)
+        print(format_evaluation_report(evaluation_result))
+        print("\n" + "=" * 80 + "\n")
+        print(format_statistical_analysis_report(statistical_result))
+        return
 
     if args.inspect_datasets:
         dataset_names = [args.dataset] if args.dataset else list(DATASET_CONFIGS)
