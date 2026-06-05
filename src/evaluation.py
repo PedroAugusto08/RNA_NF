@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from typing import Any
 
 import matplotlib
@@ -38,6 +37,30 @@ def ensure_evaluation_directories() -> None:
     # Garante que as pastas de tabelas e figuras existam.
     TABLES_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def remove_legacy_confusion_matrix_figures() -> None:
+    # Remove figuras antigas por seed para manter apenas as matrizes finais agregadas.
+    for legacy_figure_path in FIGURES_DIR.glob("*_seed_*_confusion_matrix.png"):
+        legacy_figure_path.unlink(missing_ok=True)
+
+
+FINAL_COMPARISON_PLOTS = [
+    {
+        "metric_column": "accuracy_mean",
+        "std_column": "accuracy_std",
+        "title": "Comparacao de Acuracia Media por Dataset",
+        "ylabel": "Acuracia media no teste",
+        "filename": "accuracy_comparison.png",
+    },
+    {
+        "metric_column": "f1_macro_mean",
+        "std_column": "f1_macro_std",
+        "title": "Comparacao de F1 Macro Medio por Dataset",
+        "ylabel": "F1 macro medio no teste",
+        "filename": "f1_macro_comparison.png",
+    },
+]
 
 
 def compute_classification_metrics(
@@ -142,22 +165,20 @@ def save_confusion_matrix_figure(
     dataset_name: str,
     display_name: str,
     algorithm_name: str,
-    seed: int,
     class_labels: list[Any],
-    y_true: pd.Series,
-    y_pred: np.ndarray,
+    matrix: np.ndarray,
+    n_runs: int,
 ) -> str:
-    # Salva a matriz de confusao em arquivo PNG.
+    # Salva a matriz de confusao agregada em arquivo PNG.
     labels_as_str = [str(label) for label in class_labels]
-    matrix = confusion_matrix(y_true, y_pred, labels=class_labels)
-    output_path = (
-        FIGURES_DIR
-        / f"{dataset_name}_{algorithm_name}_seed_{seed}_confusion_matrix.png"
-    )
+    output_path = FIGURES_DIR / f"{dataset_name}_{algorithm_name}_confusion_matrix.png"
 
     plt.figure(figsize=(8, 6))
     plt.imshow(matrix, interpolation="nearest", cmap="Blues")
-    plt.title(f"Matriz de Confusao - {display_name} - {algorithm_name}")
+    plt.title(
+        f"Matriz de Confusao Agregada - {display_name} - {algorithm_name}\n"
+        f"({n_runs} execucoes)"
+    )
     plt.colorbar()
     tick_positions = np.arange(len(labels_as_str))
     plt.xticks(tick_positions, labels_as_str, rotation=45, ha="right")
@@ -185,13 +206,163 @@ def save_confusion_matrix_figure(
     return str(output_path)
 
 
+def build_prediction_payload(
+    dataset_name: str,
+    display_name: str,
+    algorithm_name: str,
+    class_labels: list[Any],
+    y_true: pd.Series,
+    y_pred: np.ndarray,
+) -> dict[str, Any]:
+    # Guarda apenas o necessario para montar matrizes de confusao finais agregadas.
+    return {
+        "dataset_name": dataset_name,
+        "display_name": display_name,
+        "algorithm_name": algorithm_name,
+        "class_labels": np.asarray(class_labels, dtype=str).tolist(),
+        "y_true": np.asarray(y_true, dtype=str).tolist(),
+        "y_pred": np.asarray(y_pred, dtype=str).tolist(),
+    }
+
+
+def save_final_confusion_matrix_figures(
+    prediction_payloads: list[dict[str, Any]],
+) -> list[str]:
+    # Agrega as predicoes de todas as execucoes e salva uma matriz final por dataset e algoritmo.
+    grouped_payloads: dict[tuple[str, str, str], dict[str, Any]] = {}
+
+    for payload in prediction_payloads:
+        group_key = (
+            payload["dataset_name"],
+            payload["display_name"],
+            payload["algorithm_name"],
+        )
+        class_labels = np.asarray(payload["class_labels"], dtype=str).tolist()
+        y_true = np.asarray(payload["y_true"], dtype=str)
+        y_pred = np.asarray(payload["y_pred"], dtype=str)
+        matrix = confusion_matrix(y_true, y_pred, labels=class_labels)
+
+        if group_key not in grouped_payloads:
+            grouped_payloads[group_key] = {
+                "dataset_name": payload["dataset_name"],
+                "display_name": payload["display_name"],
+                "algorithm_name": payload["algorithm_name"],
+                "class_labels": class_labels,
+                "matrix": matrix.astype(int),
+                "n_runs": 1,
+            }
+        else:
+            grouped_payloads[group_key]["matrix"] += matrix.astype(int)
+            grouped_payloads[group_key]["n_runs"] += 1
+
+    figure_paths: list[str] = []
+    for aggregated_payload in grouped_payloads.values():
+        figure_paths.append(
+            save_confusion_matrix_figure(
+                dataset_name=aggregated_payload["dataset_name"],
+                display_name=aggregated_payload["display_name"],
+                algorithm_name=aggregated_payload["algorithm_name"],
+                class_labels=aggregated_payload["class_labels"],
+                matrix=aggregated_payload["matrix"],
+                n_runs=aggregated_payload["n_runs"],
+            )
+        )
+
+    return sorted(figure_paths)
+
+
+def save_comparison_plot(
+    metrics_summary_df: pd.DataFrame,
+    metric_column: str,
+    std_column: str,
+    title: str,
+    ylabel: str,
+    filename: str,
+) -> str:
+    # Salva um grafico comparativo agregado por dataset para uma metrica final.
+    dataset_order = list(DATASET_CONFIGS)
+    selected_df = metrics_summary_df.loc[
+        metrics_summary_df["dataset_name"].isin(dataset_order)
+    ].copy()
+    selected_df["dataset_name"] = pd.Categorical(
+        selected_df["dataset_name"],
+        categories=dataset_order,
+        ordered=True,
+    )
+    selected_df = selected_df.sort_values(["dataset_name", "algorithm_name"])
+
+    datasets_df = (
+        selected_df[["dataset_name", "display_name"]]
+        .drop_duplicates()
+        .sort_values("dataset_name")
+    )
+    dataset_names = datasets_df["dataset_name"].tolist()
+    display_names = datasets_df["display_name"].tolist()
+    algorithm_names = [
+        algorithm_name
+        for algorithm_name in ALGORITHM_NAMES
+        if algorithm_name in selected_df["algorithm_name"].unique()
+    ]
+
+    x_positions = np.arange(len(dataset_names))
+    total_width = 0.8
+    bar_width = total_width / max(len(algorithm_names), 1)
+    color_map = plt.cm.Set2(np.linspace(0, 1, max(len(algorithm_names), 1)))
+
+    plt.figure(figsize=(12, 6))
+    for algorithm_index, algorithm_name in enumerate(algorithm_names):
+        algorithm_df = (
+            selected_df.loc[selected_df["algorithm_name"] == algorithm_name]
+            .set_index("dataset_name")
+            .reindex(dataset_names)
+        )
+        offsets = x_positions - total_width / 2 + bar_width / 2 + algorithm_index * bar_width
+        plt.bar(
+            offsets,
+            algorithm_df[metric_column].to_numpy(),
+            width=bar_width,
+            yerr=algorithm_df[std_column].to_numpy(),
+            capsize=4,
+            label=algorithm_name,
+            color=color_map[algorithm_index],
+            alpha=0.9,
+        )
+
+    plt.title(title)
+    plt.xlabel("Dataset")
+    plt.ylabel(ylabel)
+    plt.xticks(x_positions, display_names, rotation=15, ha="right")
+    plt.legend(title="Algoritmo")
+    plt.tight_layout()
+
+    output_path = FIGURES_DIR / filename
+    plt.savefig(output_path, dpi=200, bbox_inches="tight")
+    plt.close()
+    return str(output_path)
+
+
+def save_final_comparison_plots(metrics_summary_df: pd.DataFrame) -> list[str]:
+    # Salva apenas os graficos comparativos finais realmente usados no relatorio.
+    return [
+        save_comparison_plot(
+            metrics_summary_df=metrics_summary_df,
+            metric_column=plot_config["metric_column"],
+            std_column=plot_config["std_column"],
+            title=plot_config["title"],
+            ylabel=plot_config["ylabel"],
+            filename=plot_config["filename"],
+        )
+        for plot_config in FINAL_COMPARISON_PLOTS
+    ]
+
+
 def evaluate_single_algorithm_on_test(
     algorithm_name: str,
     prepared: dict[str, Any],
     seed: int,
     model_params: dict[str, Any],
     selected_validation_record: dict[str, Any],
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     # Treina um algoritmo no treino e avalia no conjunto de teste.
     X_train = prepared["processed_splits"]["X_train"]
     y_train = prepared["raw_splits"]["y_train"]
@@ -211,17 +382,16 @@ def evaluate_single_algorithm_on_test(
         y_pred=y_pred,
         class_labels=class_labels,
     )
-    confusion_matrix_path = save_confusion_matrix_figure(
+    prediction_payload = build_prediction_payload(
         dataset_name=prepared["dataset_name"],
         display_name=prepared["display_name"],
         algorithm_name=algorithm_name,
-        seed=seed,
         class_labels=class_labels,
         y_true=y_test,
         y_pred=y_pred,
     )
 
-    return {
+    metric_record = {
         "dataset_name": prepared["dataset_name"],
         "display_name": prepared["display_name"],
         "algorithm_name": algorithm_name,
@@ -239,16 +409,16 @@ def evaluate_single_algorithm_on_test(
         "warning_count": len(warnings_list),
         "warnings": " | ".join(warnings_list),
         "model_params": serialize_model_params(model_params),
-        "confusion_matrix_figure": confusion_matrix_path,
         **metrics,
     }
+    return metric_record, prediction_payload
 
 
 def run_evaluation_for_seed(
     dataset_name: str,
     seed: int,
     algorithm_names: list[str] | None = None,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     # Avalia todos os algoritmos no mesmo split de teste para uma seed.
     prepared = prepare_dataset_splits(
         dataset_name=dataset_name,
@@ -264,16 +434,21 @@ def run_evaluation_for_seed(
     best_records_by_algorithm = {
         record["algorithm_name"]: record for record in best_records
     }
-    return [
-        evaluate_single_algorithm_on_test(
+    metric_records: list[dict[str, Any]] = []
+    prediction_payloads: list[dict[str, Any]] = []
+
+    for algorithm_name in selected_algorithms:
+        metric_record, prediction_payload = evaluate_single_algorithm_on_test(
             algorithm_name=algorithm_name,
             prepared=prepared,
             seed=seed,
             model_params=best_params_by_algorithm[algorithm_name],
             selected_validation_record=best_records_by_algorithm[algorithm_name],
         )
-        for algorithm_name in selected_algorithms
-    ]
+        metric_records.append(metric_record)
+        prediction_payloads.append(prediction_payload)
+
+    return metric_records, prediction_payloads
 
 
 def build_metrics_by_run_dataframe(metric_records: list[dict[str, Any]]) -> pd.DataFrame:
@@ -343,16 +518,22 @@ def build_metrics_summary_dataframe(metrics_by_run_df: pd.DataFrame) -> pd.DataF
 def save_metrics_results(
     metrics_by_run_df: pd.DataFrame,
     metrics_summary_df: pd.DataFrame,
-) -> dict[str, str]:
+    prediction_payloads: list[dict[str, Any]],
+) -> dict[str, Any]:
     # Salva os CSVs principais da ETAPA 9.
     ensure_evaluation_directories()
+    remove_legacy_confusion_matrix_figures()
     metrics_by_run_path = TABLES_DIR / "metrics_by_run.csv"
     metrics_summary_path = TABLES_DIR / "metrics_summary.csv"
     metrics_by_run_df.to_csv(metrics_by_run_path, index=False)
     metrics_summary_df.to_csv(metrics_summary_path, index=False)
+    confusion_matrix_paths = save_final_confusion_matrix_figures(prediction_payloads)
+    comparison_plot_paths = save_final_comparison_plots(metrics_summary_df)
     return {
         "metrics_by_run_path": str(metrics_by_run_path),
         "metrics_summary_path": str(metrics_summary_path),
+        "confusion_matrix_paths": confusion_matrix_paths,
+        "comparison_plot_paths": comparison_plot_paths,
     }
 
 
@@ -369,15 +550,16 @@ def run_evaluation(
     seeds = generate_seeds(n_runs=n_runs, start_seed=start_seed)
 
     metric_records: list[dict[str, Any]] = []
+    prediction_payloads: list[dict[str, Any]] = []
     for dataset_name in selected_datasets:
         for seed in seeds:
-            metric_records.extend(
-                run_evaluation_for_seed(
-                    dataset_name=dataset_name,
-                    seed=seed,
-                    algorithm_names=algorithm_names,
-                )
+            seed_metric_records, seed_prediction_payloads = run_evaluation_for_seed(
+                dataset_name=dataset_name,
+                seed=seed,
+                algorithm_names=algorithm_names,
             )
+            metric_records.extend(seed_metric_records)
+            prediction_payloads.extend(seed_prediction_payloads)
 
     metrics_by_run_df = build_metrics_by_run_dataframe(metric_records)
     metrics_summary_df = build_metrics_summary_dataframe(metrics_by_run_df)
@@ -387,6 +569,7 @@ def run_evaluation(
         artifact_paths = save_metrics_results(
             metrics_by_run_df=metrics_by_run_df,
             metrics_summary_df=metrics_summary_df,
+            prediction_payloads=prediction_payloads,
         )
 
     return {
@@ -418,7 +601,7 @@ def format_evaluation_report(evaluation_result: dict[str, Any]) -> str:
             "Resumo das metricas salvo em: "
             f"{evaluation_result['artifact_paths']['metrics_summary_path']}"
         )
-        lines.append(f"Matrizes de confusao salvas em: {FIGURES_DIR}")
+        lines.append(f"Figuras finais salvas em: {FIGURES_DIR}")
 
     lines.append("")
     lines.append("Resumo por dataset e algoritmo:")

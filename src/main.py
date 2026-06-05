@@ -13,15 +13,15 @@ from src.statistical_analysis import (
 )
 from src.models import (
     format_fuzzy_cmeans_smoke_test_report,
-    format_fuzzy_knn_smoke_test_report,
     evaluate_mlp_classifier,
     evaluate_rbf_network_classifier,
     format_mlp_smoke_test_report,
     run_fuzzy_cmeans_smoke_test,
-    run_fuzzy_knn_smoke_test,
     run_mlp_smoke_test,
+    run_zero_order_sugeno_smoke_test,
     train_mlp_classifier,
     train_rbf_network_classifier,
+    format_zero_order_sugeno_smoke_test_report,
 )
 from src.preprocessing import (
     build_preprocessing_overview,
@@ -96,9 +96,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Executa um teste rapido do Fuzzy C-Means usando treino e validacao.",
     )
     parser.add_argument(
-        "--test-fuzzy-knn",
+        "--test-sugeno",
         action="store_true",
-        help="Executa um teste rapido do Fuzzy KNN usando treino e validacao.",
+        help="Executa um teste rapido do Sugeno de ordem zero usando treino e validacao.",
     )
     parser.add_argument(
         "--run-experiments",
@@ -280,15 +280,15 @@ def main() -> None:
         print(format_fuzzy_cmeans_smoke_test_report(result))
         return
 
-    if args.test_fuzzy_knn:
+    if args.test_sugeno:
         if not args.dataset:
-            parser.error("Use --dataset ao executar --test-fuzzy-knn.")
+            parser.error("Use --dataset ao executar --test-sugeno.")
 
-        result = run_fuzzy_knn_smoke_test(
+        result = run_zero_order_sugeno_smoke_test(
             dataset_name=args.dataset,
             seed=args.seed,
         )
-        print(format_fuzzy_knn_smoke_test_report(result))
+        print(format_zero_order_sugeno_smoke_test_report(result))
         return
 
     if args.run_experiments:

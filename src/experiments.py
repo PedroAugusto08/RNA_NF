@@ -15,17 +15,17 @@ from src.config import (
 )
 from src.models import (
     evaluate_fuzzy_cmeans_classifier,
-    evaluate_fuzzy_knn_classifier,
     evaluate_mlp_classifier,
     evaluate_rbf_network_classifier,
+    evaluate_zero_order_sugeno_classifier,
     get_fuzzy_cmeans_param_grid,
-    get_fuzzy_knn_param_grid,
     get_mlp_param_grid,
     get_rbf_param_grid,
+    get_zero_order_sugeno_param_grid,
     train_fuzzy_cmeans_classifier,
-    train_fuzzy_knn_classifier,
     train_mlp_classifier,
     train_rbf_network_classifier,
+    train_zero_order_sugeno_classifier,
 )
 from src.preprocessing import prepare_dataset_splits
 
@@ -34,7 +34,7 @@ ALGORITHM_NAMES = [
     "mlp_classifier",
     "rbf_network",
     "fuzzy_cmeans",
-    "fuzzy_knn",
+    "zero_order_sugeno",
 ]
 
 
@@ -110,11 +110,13 @@ def get_default_algorithm_params(
             "random_state": seed,
         }
 
-    if algorithm_name == "fuzzy_knn":
+    if algorithm_name == "zero_order_sugeno":
         return {
-            "n_neighbors": 5,
-            "m": 2.0,
-            "metric": "euclidean",
+            "n_rules": max(2 * n_classes, 2),
+            "sigma_scale": 1.0,
+            "random_state": seed,
+            "max_iter": 300,
+            "n_init": 10,
         }
 
     raise ValueError(f"Algoritmo desconhecido: {algorithm_name}")
@@ -132,15 +134,20 @@ def get_algorithm_param_grid(
         base_grid = get_rbf_param_grid(n_classes)
     elif algorithm_name == "fuzzy_cmeans":
         base_grid = get_fuzzy_cmeans_param_grid(n_classes)
-    elif algorithm_name == "fuzzy_knn":
-        base_grid = get_fuzzy_knn_param_grid()
+    elif algorithm_name == "zero_order_sugeno":
+        base_grid = get_zero_order_sugeno_param_grid(n_classes)
     else:
         raise ValueError(f"Algoritmo desconhecido: {algorithm_name}")
 
     resolved_grid = []
     for params in base_grid:
         resolved_params = dict(params)
-        if algorithm_name in {"mlp_classifier", "rbf_network", "fuzzy_cmeans"}:
+        if algorithm_name in {
+            "mlp_classifier",
+            "rbf_network",
+            "fuzzy_cmeans",
+            "zero_order_sugeno",
+        }:
             resolved_params.setdefault("random_state", seed)
         resolved_grid.append(resolved_params)
     return resolved_grid
@@ -179,8 +186,8 @@ def fit_algorithm_model(
         )
         return model, training_time_seconds, warnings_list
 
-    if algorithm_name == "fuzzy_knn":
-        model, training_time_seconds = train_fuzzy_knn_classifier(
+    if algorithm_name == "zero_order_sugeno":
+        model, training_time_seconds = train_zero_order_sugeno_classifier(
             X_train=X_train,
             y_train=y_train,
             **model_params,
@@ -218,8 +225,8 @@ def evaluate_algorithm_on_validation(
             y_validation=y_validation,
         )
 
-    if algorithm_name == "fuzzy_knn":
-        return evaluate_fuzzy_knn_classifier(
+    if algorithm_name == "zero_order_sugeno":
+        return evaluate_zero_order_sugeno_classifier(
             model=model,
             X_validation=X_validation,
             y_validation=y_validation,

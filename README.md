@@ -9,7 +9,7 @@ O projeto compara quatro algoritmos:
 - `MLP Classifier`
 - `RBF Network`
 - `Fuzzy C-Means Classifier`
-- `Fuzzy KNN Classifier`
+- `Sugeno de ordem zero`
 
 Os experimentos usam:
 
