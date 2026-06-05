@@ -1,19 +1,26 @@
-# Projeto IC - Comparacao de Modelos para Classificacao
+# Projeto IC - Comparação de Modelos para Classificação
 
-Projeto da disciplina de Inteligencia Computacional com foco em comparacao metodologicamente correta de algoritmos para tarefas de classificacao em quatro datasets reais.
+Projeto da disciplina de Inteligência Computacional para comparação experimental de modelos de classificação em quatro bases reais, com foco em reprodutibilidade, seleção sistemática de hiperparâmetros e análise estatística dos resultados.
 
-## Objetivo
+## Visão geral
 
-Comparar modelos de redes neurais artificiais e modelos fuzzy/neuro-fuzzy usando uma metodologia experimental reprodutivel, com:
+O projeto compara quatro algoritmos:
 
-- analise exploratoria dos datasets;
-- separacao treino/validacao/teste;
-- busca sistematica de hiperparametros;
-- multiplas execucoes independentes;
-- metricas e analise estatistica;
-- organizacao clara do codigo e dos resultados.
+- `MLP Classifier`
+- `RBF Network`
+- `Fuzzy C-Means Classifier`
+- `Fuzzy KNN Classifier`
 
-## Estrutura do projeto
+Os experimentos usam:
+
+- quatro datasets reais de classificação;
+- divisão estratificada em treino, validação e teste (`60/20/20`);
+- busca em grade no conjunto de validação;
+- `21` execuções independentes por padrão, com seeds diferentes;
+- avaliação final no conjunto de teste;
+- ranking e análise estatística dos algoritmos.
+
+## Estrutura
 
 ```text
 RNA_NF/
@@ -22,48 +29,30 @@ RNA_NF/
 │   ├── figures/
 │   └── tables/
 ├── src/
-│   ├── __init__.py
 │   ├── config.py
 │   ├── data_loader.py
 │   ├── eda.py
-│   ├── evaluation.py
-│   ├── experiments.py
-│   ├── main.py
 │   ├── preprocessing.py
+│   ├── experiments.py
+│   ├── evaluation.py
+│   ├── statistical_analysis.py
+│   ├── main.py
 │   └── models/
-│       ├── __init__.py
-│       ├── fuzzy_cmeans.py
-│       ├── mlp_models.py
-│       └── neuro_fuzzy.py
 └── requirements.txt
 ```
 
-## Organizacao dos datasets
+## Datasets
 
-Os arquivos CSV originais devem ficar em `data/raw/`.
+Os arquivos CSV devem ficar em `data/`:
 
-Nomes esperados para manter o projeto padronizado:
-
-- `breast_cancer.csv`
+- `breast-cancer.csv`
 - `diabetes.csv`
 - `faults.csv`
-- `robot_navigation.csv`
+- `Robo.csv`
 
-Observacoes importantes:
+## Execução
 
-- mantenha os arquivos originais sem preprocessamento em `data/raw/`;
-- qualquer versao tratada ou transformada deve ir para `data/processed/`;
-- se hoje seus arquivos estiverem com nomes diferentes, podemos padronizar isso na ETAPA 2 ou renomear manualmente antes de testar o carregamento.
-
-## Como preparar o ambiente
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-No Windows PowerShell:
+Criação do ambiente e instalação das dependências:
 
 ```powershell
 python -m venv .venv
@@ -71,13 +60,24 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Escopo atual
+Comando principal de reprodução experimental:
 
-Esta versao contem apenas a ETAPA 1:
+```powershell
+python -m src.main --run
+```
 
-- estrutura inicial de pastas;
-- arquivos-base em `src/`;
-- `requirements.txt`;
-- `README.md` inicial.
+Comando auxiliar para análise exploratória:
 
-Os modelos e a logica experimental ainda nao foram implementados.
+```powershell
+python -m src.main --run-eda
+```
+
+## Saídas
+
+Os principais artefatos gerados ficam em `results/`:
+
+- tabelas com métricas por execução e métricas resumidas;
+- tabelas de ranking e comparação estatística;
+- figuras de distribuição de classes e matrizes de confusão.
+
+O detalhamento metodológico, a discussão dos resultados e a interpretação final ficam reservados para o artigo.
