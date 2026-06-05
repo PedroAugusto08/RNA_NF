@@ -7,6 +7,10 @@ from src.data_loader import format_dataset_report
 from src.eda import format_eda_report, run_eda
 from src.evaluation import format_evaluation_report, run_evaluation
 from src.experiments import format_experiments_report, run_experiments
+from src.statistical_analysis import (
+    format_statistical_analysis_report,
+    run_statistical_analysis,
+)
 from src.models import (
     format_fuzzy_cmeans_smoke_test_report,
     format_fuzzy_knn_smoke_test_report,
@@ -100,6 +104,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--run-evaluation",
         action="store_true",
         help="Calcula metricas completas no conjunto de teste e salva matrizes de confusao.",
+    )
+    parser.add_argument(
+        "--run-statistical-analysis",
+        action="store_true",
+        help="Gera rankings, aplica Friedman e executa pos-teste pareado sobre as metricas da ETAPA 9.",
     )
     return parser
 
@@ -283,6 +292,11 @@ def main() -> None:
             save_results=True,
         )
         print(format_evaluation_report(evaluation_result))
+        return
+
+    if args.run_statistical_analysis:
+        statistical_result = run_statistical_analysis(save_results=True)
+        print(format_statistical_analysis_report(statistical_result))
         return
 
     parser.print_help()
