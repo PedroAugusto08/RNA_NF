@@ -12,6 +12,7 @@ from src.config import (
     DEFAULT_EXPERIMENT_RUNS,
     DEFAULT_RANDOM_SEED,
     EXPERIMENTS_DIR,
+    get_algorithm_display_name,
 )
 from src.models import (
     evaluate_fuzzy_cmeans_classifier,
@@ -34,7 +35,7 @@ ALGORITHM_NAMES = [
     "mlp_classifier",
     "rbf_network",
     "fuzzy_cmeans",
-    "zero_order_sugeno",
+    "sugeno_o0",
 ]
 
 
@@ -110,7 +111,7 @@ def get_default_algorithm_params(
             "random_state": seed,
         }
 
-    if algorithm_name == "zero_order_sugeno":
+    if algorithm_name == "sugeno_o0":
         return {
             "n_rules": max(2 * n_classes, 2),
             "sigma_scale": 1.0,
@@ -134,7 +135,7 @@ def get_algorithm_param_grid(
         base_grid = get_rbf_param_grid(n_classes)
     elif algorithm_name == "fuzzy_cmeans":
         base_grid = get_fuzzy_cmeans_param_grid(n_classes)
-    elif algorithm_name == "zero_order_sugeno":
+    elif algorithm_name == "sugeno_o0":
         base_grid = get_zero_order_sugeno_param_grid(n_classes)
     else:
         raise ValueError(f"Algoritmo desconhecido: {algorithm_name}")
@@ -146,7 +147,7 @@ def get_algorithm_param_grid(
             "mlp_classifier",
             "rbf_network",
             "fuzzy_cmeans",
-            "zero_order_sugeno",
+            "sugeno_o0",
         }:
             resolved_params.setdefault("random_state", seed)
         resolved_grid.append(resolved_params)
@@ -186,7 +187,7 @@ def fit_algorithm_model(
         )
         return model, training_time_seconds, warnings_list
 
-    if algorithm_name == "zero_order_sugeno":
+    if algorithm_name == "sugeno_o0":
         model, training_time_seconds = train_zero_order_sugeno_classifier(
             X_train=X_train,
             y_train=y_train,
@@ -225,7 +226,7 @@ def evaluate_algorithm_on_validation(
             y_validation=y_validation,
         )
 
-    if algorithm_name == "zero_order_sugeno":
+    if algorithm_name == "sugeno_o0":
         return evaluate_zero_order_sugeno_classifier(
             model=model,
             X_validation=X_validation,
@@ -271,6 +272,7 @@ def run_single_algorithm(
         "dataset_name": prepared["dataset_name"],
         "display_name": prepared["display_name"],
         "algorithm_name": algorithm_name,
+        "algorithm_display_name": get_algorithm_display_name(algorithm_name),
         "seed": seed,
         "search_iteration": search_iteration,
         "split_signature": split_signature,
@@ -373,7 +375,10 @@ def build_runs_dataframe(run_records: list[dict[str, Any]]) -> pd.DataFrame:
 def build_summary_dataframe(runs_df: pd.DataFrame) -> pd.DataFrame:
     # Consolida media e desvio-padrao por dataset e algoritmo.
     summary_df = (
-        runs_df.groupby(["dataset_name", "display_name", "algorithm_name"], as_index=False)
+        runs_df.groupby(
+            ["dataset_name", "display_name", "algorithm_name", "algorithm_display_name"],
+            as_index=False,
+        )
         .agg(
             n_runs=("seed", "count"),
             validation_accuracy_mean=("validation_accuracy", "mean"),
@@ -471,7 +476,13 @@ def format_experiments_report(experiment_result: dict[str, Any]) -> str:
         "Execucao experimental concluida com sucesso.",
         f"Datasets: {experiment_result['dataset_names']}",
         f"Seeds: {experiment_result['seeds']}",
-        f"Algoritmos: {experiment_result['algorithm_names']}",
+        "Algoritmos: "
+        + str(
+            [
+                get_algorithm_display_name(algorithm_name)
+                for algorithm_name in experiment_result["algorithm_names"]
+            ]
+        ),
     ]
 
     if experiment_result["artifact_paths"]:
@@ -491,7 +502,7 @@ def format_experiments_report(experiment_result: dict[str, Any]) -> str:
 
     for row in summary_df.itertuples(index=False):
         lines.append(
-            f"- {row.display_name} | {row.algorithm_name}: "
+            f"- {row.display_name} | {row.algorithm_display_name}: "
             f"acc_val = {row.validation_accuracy_mean:.4f} +- "
             f"{row.validation_accuracy_std:.4f}, "
             f"tempo = {row.training_time_mean_seconds:.4f} +- "

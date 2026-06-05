@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import friedmanchisquare, rankdata, wilcoxon
 
-from src.config import TABLES_DIR
+from src.config import TABLES_DIR, get_algorithm_display_name
 
 
 METRICS_FOR_STATISTICAL_ANALYSIS = [
@@ -356,7 +356,7 @@ def format_statistical_analysis_report(result: dict[str, Any]) -> str:
     lines.append("Ranking medio por metrica:")
     for row in average_ranking_df.itertuples(index=False):
         lines.append(
-            f"- {row.metric_name} | {row.algorithm_name}: "
+            f"- {row.metric_name} | {get_algorithm_display_name(row.algorithm_name)}: "
             f"rank medio = {row.average_rank:.4f}, "
             f"score medio = {row.average_score:.4f}"
         )
@@ -382,7 +382,9 @@ def format_statistical_analysis_report(result: dict[str, Any]) -> str:
     else:
         for row in significant_pairs_df.itertuples(index=False):
             lines.append(
-                f"- {row.metric_name}: {row.algorithm_a} vs {row.algorithm_b} | "
+                f"- {row.metric_name}: "
+                f"{get_algorithm_display_name(row.algorithm_a)} vs "
+                f"{get_algorithm_display_name(row.algorithm_b)} | "
                 f"p_holm = {row.p_value_holm:.6f}"
             )
 

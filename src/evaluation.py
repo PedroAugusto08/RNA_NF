@@ -22,6 +22,7 @@ from src.config import (
     DEFAULT_RANDOM_SEED,
     FIGURES_DIR,
     TABLES_DIR,
+    get_algorithm_display_name,
 )
 from src.experiments import (
     ALGORITHM_NAMES,
@@ -175,8 +176,9 @@ def save_confusion_matrix_figure(
 
     plt.figure(figsize=(8, 6))
     plt.imshow(matrix, interpolation="nearest", cmap="Blues")
+    algorithm_display_name = get_algorithm_display_name(algorithm_name)
     plt.title(
-        f"Matriz de Confusao Agregada - {display_name} - {algorithm_name}\n"
+        f"Matriz de Confusao Agregada - {display_name} - {algorithm_display_name}\n"
         f"({n_runs} execucoes)"
     )
     plt.colorbar()
@@ -219,6 +221,7 @@ def build_prediction_payload(
         "dataset_name": dataset_name,
         "display_name": display_name,
         "algorithm_name": algorithm_name,
+        "algorithm_display_name": get_algorithm_display_name(algorithm_name),
         "class_labels": np.asarray(class_labels, dtype=str).tolist(),
         "y_true": np.asarray(y_true, dtype=str).tolist(),
         "y_pred": np.asarray(y_pred, dtype=str).tolist(),
@@ -247,6 +250,7 @@ def save_final_confusion_matrix_figures(
                 "dataset_name": payload["dataset_name"],
                 "display_name": payload["display_name"],
                 "algorithm_name": payload["algorithm_name"],
+                "algorithm_display_name": payload["algorithm_display_name"],
                 "class_labels": class_labels,
                 "matrix": matrix.astype(int),
                 "n_runs": 1,
@@ -323,7 +327,7 @@ def save_comparison_plot(
             width=bar_width,
             yerr=algorithm_df[std_column].to_numpy(),
             capsize=4,
-            label=algorithm_name,
+            label=get_algorithm_display_name(algorithm_name),
             color=color_map[algorithm_index],
             alpha=0.9,
         )
@@ -395,6 +399,7 @@ def evaluate_single_algorithm_on_test(
         "dataset_name": prepared["dataset_name"],
         "display_name": prepared["display_name"],
         "algorithm_name": algorithm_name,
+        "algorithm_display_name": get_algorithm_display_name(algorithm_name),
         "seed": seed,
         "n_classes": int(y_train.nunique()),
         "test_samples": int(X_test.shape[0]),
@@ -460,7 +465,12 @@ def build_metrics_summary_dataframe(metrics_by_run_df: pd.DataFrame) -> pd.DataF
     # Consolida media e desvio-padrao das metricas por dataset e algoritmo.
     summary_df = (
         metrics_by_run_df.groupby(
-            ["dataset_name", "display_name", "algorithm_name"],
+            [
+                "dataset_name",
+                "display_name",
+                "algorithm_name",
+                "algorithm_display_name",
+            ],
             as_index=False,
         )
         .agg(
@@ -589,7 +599,13 @@ def format_evaluation_report(evaluation_result: dict[str, Any]) -> str:
         "Avaliacao concluida com sucesso.",
         f"Datasets: {evaluation_result['dataset_names']}",
         f"Seeds: {evaluation_result['seeds']}",
-        f"Algoritmos: {evaluation_result['algorithm_names']}",
+        "Algoritmos: "
+        + str(
+            [
+                get_algorithm_display_name(algorithm_name)
+                for algorithm_name in evaluation_result["algorithm_names"]
+            ]
+        ),
     ]
 
     if evaluation_result["artifact_paths"]:
@@ -608,7 +624,7 @@ def format_evaluation_report(evaluation_result: dict[str, Any]) -> str:
 
     for row in summary_df.itertuples(index=False):
         lines.append(
-            f"- {row.display_name} | {row.algorithm_name}: "
+            f"- {row.display_name} | {row.algorithm_display_name}: "
             f"acc_val_sel = {row.selected_validation_accuracy_mean:.4f} +- "
             f"{row.selected_validation_accuracy_std:.4f}, "
             f"acc_teste = {row.accuracy_mean:.4f} +- {row.accuracy_std:.4f}, "

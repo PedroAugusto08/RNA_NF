@@ -80,3 +80,16 @@ DATASET_ALIASES = {
     "robot_navigation": "robot_navigation",
     "wall_following_robot": "robot_navigation",
 }
+
+
+ALGORITHM_DISPLAY_NAMES = {
+    "mlp_classifier": "MLP",
+    "rbf_network": "RBF Network",
+    "fuzzy_cmeans": "Fuzzy C-Means",
+    "sugeno_o0": "Sugeno_O0",
+}
+
+
+def get_algorithm_display_name(algorithm_name: str) -> str:
+    # Retorna o nome amigavel usado em relatorios, tabelas e figuras.
+    return ALGORITHM_DISPLAY_NAMES.get(algorithm_name, algorithm_name)
