@@ -5,19 +5,37 @@ from typing import Any
 
 import matplotlib
 import pandas as pd
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from src.config import DATASET_CONFIGS, FIGURES_DIR, TABLES_DIR
+from src.config import DATASET_CONFIGS, EDA_FIGURES_DIR, FIGURES_DIR, TABLES_DIR
 from src.data_loader import load_dataset, read_raw_dataset
 
 
 def ensure_results_directories() -> None:
     # Garante que as pastas de saida existam antes de salvar arquivos.
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    EDA_FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     TABLES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def remove_legacy_eda_figures() -> None:
+    # Remove figuras antigas da EDA salvas fora da subpasta dedicada.
+    legacy_patterns = [
+        "*_class_distribution.png",
+        "*_correlation_heatmap.png",
+        "*_pca_2d.png",
+    ]
+    for legacy_pattern in legacy_patterns:
+        for legacy_figure_path in FIGURES_DIR.glob(legacy_pattern):
+            legacy_figure_path.unlink(missing_ok=True)
+        for legacy_figure_path in EDA_FIGURES_DIR.glob(legacy_pattern):
+            if "correlation_heatmap" in legacy_figure_path.name:
+                legacy_figure_path.unlink(missing_ok=True)
 
 
 def build_column_types_summary(df: pd.DataFrame) -> pd.DataFrame:
@@ -62,7 +80,7 @@ def save_class_distribution_plot(
     class_distribution_df: pd.DataFrame,
 ) -> Path:
     # Salva um grafico de barras com a distribuicao das classes.
-    output_path = FIGURES_DIR / f"{dataset_name}_class_distribution.png"
+    output_path = EDA_FIGURES_DIR / f"{dataset_name}_class_distribution.png"
 
     plt.figure(figsize=(10, 6))
     bars = plt.bar(
@@ -86,6 +104,70 @@ def save_class_distribution_plot(
             textcoords="offset points",
         )
 
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200, bbox_inches="tight")
+    plt.close()
+    return output_path
+
+
+def build_pca_input_matrix(X: pd.DataFrame) -> pd.DataFrame:
+    # Prepara uma matriz numerica para PCA, convertendo categoricas em dummies se necessario.
+    if X.empty:
+        raise ValueError("Nao foi possivel gerar PCA para um conjunto sem atributos.")
+
+    encoded_X = pd.get_dummies(X, drop_first=False)
+    if encoded_X.empty:
+        raise ValueError("Nao foi possivel gerar PCA apos codificacao dos atributos.")
+
+    return encoded_X.astype(float)
+
+
+def save_pca_2d_plot(
+    dataset_name: str,
+    display_name: str,
+    X: pd.DataFrame,
+    y: pd.Series,
+) -> Path:
+    # Salva uma projecao PCA 2D colorida pela classe.
+    output_path = EDA_FIGURES_DIR / f"{dataset_name}_pca_2d.png"
+    pca_input = build_pca_input_matrix(X)
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(pca_input)
+    pca = PCA(n_components=2, random_state=0)
+    components = pca.fit_transform(X_scaled)
+
+    plot_df = pd.DataFrame(
+        {
+            "pc1": components[:, 0],
+            "pc2": components[:, 1],
+            "class_label": y.astype(str).to_numpy(),
+        }
+    )
+    explained_variance = pca.explained_variance_ratio_ * 100
+    class_labels = sorted(plot_df["class_label"].unique().tolist())
+    colors = plt.cm.Set2.colors
+
+    plt.figure(figsize=(10, 6))
+    for class_index, class_label in enumerate(class_labels):
+        class_mask = plot_df["class_label"] == class_label
+        plt.scatter(
+            plot_df.loc[class_mask, "pc1"],
+            plot_df.loc[class_mask, "pc2"],
+            label=class_label,
+            alpha=0.75,
+            s=35,
+            color=colors[class_index % len(colors)],
+            edgecolors="none",
+        )
+
+    plt.title(
+        f"PCA 2D - {display_name}\n"
+        f"PC1 = {explained_variance[0]:.2f}% | PC2 = {explained_variance[1]:.2f}%"
+    )
+    plt.xlabel("Componente Principal 1")
+    plt.ylabel("Componente Principal 2")
+    plt.legend(title="Classe")
     plt.tight_layout()
     plt.savefig(output_path, dpi=200, bbox_inches="tight")
     plt.close()
@@ -116,6 +198,12 @@ def summarize_dataset(dataset_name: str) -> dict[str, Any]:
         display_name=metadata["display_name"],
         class_distribution_df=class_distribution_df,
     )
+    pca_figure_path = save_pca_2d_plot(
+        dataset_name=metadata["dataset_name"],
+        display_name=metadata["display_name"],
+        X=X,
+        y=y,
+    )
 
     n_numeric_columns = int(raw_df.select_dtypes(include="number").shape[1])
     n_categorical_columns = int(raw_df.select_dtypes(exclude="number").shape[1])
@@ -145,12 +233,14 @@ def summarize_dataset(dataset_name: str) -> dict[str, Any]:
         "missing_values_table": str(missing_values_path),
         "class_distribution_table": str(class_distribution_path),
         "class_distribution_figure": str(figure_path),
+        "pca_2d_figure": str(pca_figure_path),
     }
 
 
 def run_eda(dataset_names: list[str] | None = None) -> pd.DataFrame:
     # Executa a EDA para um ou mais datasets e salva a tabela resumo consolidada.
     ensure_results_directories()
+    remove_legacy_eda_figures()
     selected_names = dataset_names or list(DATASET_CONFIGS)
     summary_rows = [summarize_dataset(dataset_name) for dataset_name in selected_names]
     summary_df = pd.DataFrame(summary_rows)
@@ -164,7 +254,7 @@ def format_eda_report(summary_df: pd.DataFrame) -> str:
     lines = [
         "EDA concluida com sucesso.",
         f"Tabela resumo salva em: {TABLES_DIR / 'datasets_summary.csv'}",
-        f"Graficos salvos em: {FIGURES_DIR}",
+        f"Graficos salvos em: {EDA_FIGURES_DIR}",
         "",
         "Resumo dos datasets:",
     ]

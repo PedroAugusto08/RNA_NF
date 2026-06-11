@@ -9,6 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 RESULTS_DIR = BASE_DIR / "results"
 FIGURES_DIR = RESULTS_DIR / "figures"
+EDA_FIGURES_DIR = FIGURES_DIR / "eda"
 TABLES_DIR = RESULTS_DIR / "tables"
 PREPROCESSING_DIR = TABLES_DIR / "preprocessing"
 EXPERIMENTS_DIR = TABLES_DIR / "experiments"
