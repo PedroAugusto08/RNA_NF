@@ -174,29 +174,38 @@ def save_confusion_matrix_figure(
     labels_as_str = [str(label) for label in class_labels]
     output_path = FIGURES_DIR / f"{dataset_name}_{algorithm_name}_confusion_matrix.png"
 
+    # Normalizando a matriz para porcentagens:
+    matrix_float = matrix.astype("float")
+    row_sums = matrix_float.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1.0
+    matrix_normalized = matrix_float / row_sums
+
     plt.figure(figsize=(8, 6))
-    plt.imshow(matrix, interpolation="nearest", cmap="Blues")
+    plt.imshow(matrix_normalized, interpolation="nearest", cmap="Blues")
     algorithm_display_name = get_algorithm_display_name(algorithm_name)
     plt.title(
         f"Matriz de Confusao Agregada - {display_name} - {algorithm_display_name}\n"
         f"({n_runs} execucoes)"
     )
-    plt.colorbar()
+    
+    plt.colorbar(format="%.2f")
     tick_positions = np.arange(len(labels_as_str))
     plt.xticks(tick_positions, labels_as_str, rotation=45, ha="right")
     plt.yticks(tick_positions, labels_as_str)
     plt.xlabel("Classe predita")
     plt.ylabel("Classe real")
 
-    threshold = matrix.max() / 2.0 if matrix.size else 0.0
-    for row_index in range(matrix.shape[0]):
-        for column_index in range(matrix.shape[1]):
-            value = int(matrix[row_index, column_index])
+    threshold = 50
+
+    for row_index in range(matrix_normalized.shape[0]):
+        for column_index in range(matrix_normalized.shape[1]):
+            value = matrix_normalized[row_index, column_index] * 100
             text_color = "white" if value > threshold else "black"
+            cell_text = f"{value:.1f}%"
             plt.text(
                 column_index,
                 row_index,
-                str(value),
+                cell_text,
                 ha="center",
                 va="center",
                 color=text_color,
@@ -624,13 +633,13 @@ def format_evaluation_report(evaluation_result: dict[str, Any]) -> str:
 
     for row in summary_df.itertuples(index=False):
         lines.append(
-            f"- {row.display_name} | {row.algorithm_display_name}: "
-            f"acc_val_sel = {row.selected_validation_accuracy_mean:.4f} +- "
-            f"{row.selected_validation_accuracy_std:.4f}, "
-            f"acc_teste = {row.accuracy_mean:.4f} +- {row.accuracy_std:.4f}, "
-            f"f1_macro = {row.f1_macro_mean:.4f} +- {row.f1_macro_std:.4f}, "
-            f"f1_weighted = {row.f1_weighted_mean:.4f} +- "
-            f"{row.f1_weighted_std:.4f}"
+            f"- {row.display_name} | {row.algorithm_display_name}:\n"
+            f"  acc_val_sel = {row.selected_validation_accuracy_mean:.4f} +- {row.selected_validation_accuracy_std:.4f}\n"
+            f"  acc_teste   = {row.accuracy_mean:.4f} +- {row.accuracy_std:.4f}\n"
+            f"  precisao    = {row.precision_macro_mean:.4f} +- {row.precision_macro_std:.4f}\n"
+            f"  revogacao   = {row.recall_macro_mean:.4f} +- {row.recall_macro_std:.4f}\n"
+            f"  f1_macro    = {row.f1_macro_mean:.4f} +- {row.f1_macro_std:.4f}\n"
+            f"  f1_weighted = {row.f1_weighted_mean:.4f} +- {row.f1_weighted_std:.4f}"
         )
 
     return "\n".join(lines)

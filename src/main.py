@@ -210,6 +210,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.run:
+        print(f"Rodando todos os testes... \n")
         dataset_names = [args.dataset] if args.dataset else list(DATASET_CONFIGS)
         evaluation_result = run_evaluation(
             dataset_names=dataset_names,
