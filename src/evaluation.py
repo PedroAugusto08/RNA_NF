@@ -330,16 +330,30 @@ def save_comparison_plot(
             .reindex(dataset_names)
         )
         offsets = x_positions - total_width / 2 + bar_width / 2 + algorithm_index * bar_width
-        plt.bar(
+        metric_values = algorithm_df[metric_column].to_numpy()
+        std_values = algorithm_df[std_column].to_numpy()
+        bars = plt.bar(
             offsets,
-            algorithm_df[metric_column].to_numpy(),
+            metric_values,
             width=bar_width,
-            yerr=algorithm_df[std_column].to_numpy(),
+            yerr=std_values,
             capsize=4,
             label=get_algorithm_display_name(algorithm_name),
             color=color_map[algorithm_index],
             alpha=0.9,
         )
+        for bar, metric_value, std_value in zip(bars, metric_values, std_values):
+            if pd.isna(metric_value):
+                continue
+            label_y = metric_value + (0 if pd.isna(std_value) else std_value) + 0.01
+            plt.text(
+                bar.get_x() + bar.get_width() / 2,
+                label_y,
+                f"{metric_value:.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+            )
 
     plt.title(title)
     plt.xlabel("Dataset")
