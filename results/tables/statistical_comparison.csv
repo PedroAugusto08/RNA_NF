@@ -1,0 +1,5 @@
+algorithm_name,average_rank_accuracy_mean,average_rank_f1_macro_mean,average_rank_f1_weighted_mean,average_score_accuracy_mean,average_score_f1_macro_mean,average_score_f1_weighted_mean
+fuzzy_cmeans,3.75,4.0,3.75,0.6510053356024325,0.45801556097612883,0.5748367263730914
+mlp_classifier,1.0,1.0,1.0,0.8451930599740678,0.8388556986413548,0.8441763356623444
+rbf_network,2.0,2.0,2.0,0.7465365108408288,0.7052324028658385,0.7373165443418338
+sugeno_o0,3.25,3.0,3.25,0.6916307020149531,0.5724295506203034,0.6611401948405331
